@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: k8s-char-device-plugin
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: k8s-char-device-plugin
+  template:
+    metadata:
+      labels:
+        app: k8s-char-device-plugin
+    spec:
+      serviceAccount: k8s-char-device-plugin
+      terminationGracePeriodSeconds: 10
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: char-devices.k8s.ztimes.tech
+                    operator: Exists
+      initContainers:
+        - name: config
+          image: bitnami/kubectl:1.25-debian-11
+          command:
+            - sh
+            - -c
+            - |-
+              kubectl get node -l char-devices.k8s.ztimes.tech -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.k8s\.ztimes\.tech/char-devices}{"\n"}{end}'|grep ubuntu-server|awk '{print $2}'|perl -pe 's/(.*?):(.*?)(\n|,)/- name: \1\n  path: \2\n/g'|sed '1i devices:' > /config/config.yaml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      containers:
+        - name: plugin
+          image: docker.flightdeck.tech/k8s/k8s-char-device-plugin:latest
+          args:
+            - -config
+            - /config/config.yaml
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: config
+              mountPath: /config
+            - name: dev
+              mountPath: /dev
+      volumes:
+        - name: device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: config
+          emptyDir: {}
+        - name: dev
+          hostPath:
+            path: /dev

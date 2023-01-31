@@ -1,0 +1,3 @@
+devices:
+  - name: i3mega
+    path: /dev/ttyUSB0
